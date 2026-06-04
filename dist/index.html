@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Video Concept Visualizer</title>
+    <style>
+        :root {
+            --bg-color: #0d0f14;
+            --panel-color: #161920;
+            --accent-color: #38bdf8;
+            --text-color: #f1f5f9;
+            --text-muted: #64748b;
+            --highlight-color: #f59e0b;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #dashboard {
+            width: 40%;
+            background-color: var(--panel-color);
+            border-right: 1px solid #2e3545;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        #content-panel {
+            width: 60%;
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem;
+        }
+        .player-wrapper {
+            position: relative;
+            padding-bottom: 56.25%;
+            height: 0;
+            overflow: hidden;
+            background: #000;
+            border-radius: 6px;
+            margin-bottom: 1.5rem;
+        }
+        .player-wrapper iframe {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            border: 0;
+        }
+        #transcript-container {
+            flex-grow: 1;
+            background-color: var(--panel-color);
+            border-radius: 6px;
+            padding: 1.25rem;
+            overflow-y: auto;
+            line-height: 1.8;
+        }
+        .word-token {
+            cursor: pointer;
+            padding: 0 2px;
+            transition: background-color 0.1s ease;
+        }
+        .word-token:hover {
+            background-color: #2e3545;
+            color: var(--accent-color);
+        }
+        .word-token.active {
+            background-color: var(--highlight-color);
+            color: #000;
+            border-radius: 2px;
+        }
+        .concept-card {
+            background: #1e2330;
+            border: 1px solid #2e3545;
+            border-radius: 4px;
+            padding: 1rem;
+            margin-top: 1rem;
+            cursor: pointer;
+        }
+        .concept-card:hover { border-color: var(--accent-color); }
+        h1 { font-size: 1.25rem; margin-bottom: 0.5rem; color: var(--accent-color); }
+        h2 { font-size: 1rem; color: var(--text-muted); margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+
+    <div id="dashboard">
+        <h1>Concept Engine Panel</h1>
+        <h2>Auto-Profiled Video Nodes</h2>
+        <div id="categories-target"></div>
+    </div>
+
+    <div id="content-panel">
+        <div class="player-wrapper">
+            <div id="yt-player-target"></div>
+        </div>
+        <div id="transcript-container">
+            <div id="transcript-target">Click words to seek parameters...</div>
+        </div>
+    </div>
+
+    <script>
+        let player = null;
+        let wordElements = [];
+
+        const tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        document.head.appendChild(tag);
+
+        function initializeViewer(videoId, words, categories) {
+            player = new YT.Player('yt-player-target', {
+                height: '100%',
+                width: '100%',
+                videoId: videoId || 'eq7fR9ISuCw',
+                events: { 'onStateChange': onPlayerStateChange }
+            });
+
+            const transTarget = document.getElementById('transcript-target');
+            transTarget.innerHTML = '';
+            words.forEach(w => {
+                const span = document.createElement('span');
+                span.className = 'word-token';
+                span.innerText = w.word + ' ';
+                span.dataset.start = w.start;
+                span.dataset.end = w.end;
+                span.addEventListener('click', () => player.seekTo(w.start, true));
+                transTarget.appendChild(span);
+                wordElements.push(span);
+            });
+
+            const catTarget = document.getElementById('categories-target');
+            categories.forEach(cat => {
+                const head = document.createElement('h3');
+                head.innerText = cat.name;
+                catTarget.appendChild(head);
+                cat.nodes.forEach(node => {
+                    const card = document.createElement('div');
+                    card.className = 'concept-card';
+                    card.innerHTML = `<strong>${node.label}</strong><p style='font-size:0.85rem;color:var(--text-muted)'>${node.summary}</p>`;
+                    card.addEventListener('click', () => player.seekTo(node.timestamp, true));
+                    catTarget.appendChild(card);
+                });
+            });
+        }
+
+        function onPlayerStateChange(event) {
+            if (event.data == YT.PlayerState.PLAYING) {
+                requestAnimationFrame(syncClockLoop);
+            }
+        }
+
+        function syncClockLoop() {
+            if (!player || typeof player.getCurrentTime !== 'function') return;
+            const currentTime = player.getCurrentTime();
+            
+            for (let i = 0; i < wordElements.length; i++) {
+                const start = parseFloat(wordElements[i].dataset.start);
+                const end = parseFloat(wordElements[i].dataset.end);
+                if (currentTime >= start && currentTime <= end) {
+                    wordElements[i].className = 'word-token active';
+                } else {
+                    wordElements[i].className = 'word-token';
+                }
+            }
+            if (player.getPlayerState() == YT.PlayerState.PLAYING) {
+                setTimeout(() => requestAnimationFrame(syncClockLoop), 100);
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            Promise.all([
+                fetch('assets/transcript_manifest.json').then(r => r.json()),
+                fetch('assets/concept_manifest.json').then(r => r.json())
+            ]).then(([trans, conc]) => {
+                initializeViewer(trans.video_metadata.video_id, trans.words, conc.categories);
+            }).catch(err => {
+                document.getElementById('transcript-target').innerText = "CORS Protection Active. Serve directory using a local web server (e.g., python3 -m http.server).";
+            });
+        });
+        function onYouTubeIframeAPIReady() {}
+    </script>
+</body>
+</html>

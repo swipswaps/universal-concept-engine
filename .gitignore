@@ -1,0 +1,8 @@
+orchestrator.py
+concept_extractor.py
+run_verification_gate.sh
+__pycache__/
+*.pyc
+.pytest_cache/
+/tmp/raw_audio_*
+/tmp/sliced_audio_*
