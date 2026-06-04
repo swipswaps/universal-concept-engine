@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Video Concept Visualizer</title>
+    <style>
+        :root {
+            --bg-color: #0d0f14;
+            --panel-color: #161920;
+            --accent-color: #38bdf8;
+            --text-color: #f1f5f9;
+            --text-muted: #64748b;
+            --highlight-color: #f59e0b;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #dashboard {
+            width: 40%;
+            background-color: var(--panel-color);
+            border-right: 1px solid #2e3545;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        #content-panel {
+            width: 60%;
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem;
+        }
+        .player-wrapper {
+            position: relative;
+            padding-bottom: 56.25%;
+            height: 0;
+            overflow: hidden;
+            background: #000;
+            border-radius: 6px;
+            margin-bottom: 1.5rem;
+        }
+        .player-wrapper iframe {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            border: 0;
+        }
+        #transcript-container {
+            flex-grow: 1;
+            background-color: var(--panel-color);
+            border-radius: 6px;
+            padding: 1.25rem;
+            overflow-y: auto;
+            line-height: 1.8;
+            scroll-behavior: smooth;
+        }
+        .word-token {
+            cursor: pointer;
+            padding: 0 3px;
+            display: inline-block;
+            transition: background-color 0.1s ease;
+        }
+        .word-token:hover {
+            background-color: #2e3545;
+            color: var(--accent-color);
+        }
+        .word-token.active {
+            background-color: var(--highlight-color);
+            color: #000;
+            border-radius: 2px;
+        }
+        .concept-card {
+            background: #1e2330;
+            border: 1px solid #2e3545;
+            border-radius: 4px;
+            padding: 1rem;
+            margin-top: 1rem;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        .concept-card:hover { border-color: var(--accent-color); }
+        h1 { font-size: 1.25rem; margin-bottom: 0.5rem; color: var(--accent-color); }
+        h2 { font-size: 1rem; color: var(--text-muted); margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+
+    <div id="dashboard">
+        <h1>Concept Engine Panel</h1>
+        <h2>Auto-Profiled Video Nodes</h2>
+        <div id="categories-target"></div>
+    </div>
+
+    <div id="content-panel">
+        <div class="player-wrapper">
+            <div id="yt-player-target"></div>
+        </div>
+        <div id="transcript-container">
+            <div id="transcript-target">Streaming concept manifestations cleanly...</div>
+        </div>
+    </div>
+
+    <script>
+        let player = null;
+        let wordElements = [];
+        let _lastScrollTime = 0;
+
+        const tag = document.createElement("script");
+        tag.src = "https://www.youtube.com/iframe_api";
+        document.head.appendChild(tag);
+
+        function parseTimestampToSeconds(ts) {
+            const cleanTs = ts.replace("[", "").replace("]", "");
+            const parts = cleanTs.split(":").map(parseFloat);
+            if (parts.length === 3) return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
+            if (parts.length === 2) return (parts[0] * 60) + parts[1];
+            return parts[0] || 0;
+        }
+
+        function onYouTubeIframeAPIReady() {
+            player = new YT.Player("yt-player-target", {
+                height: "100%",
+                width: "100%",
+                videoId: "eq7fR9ISuCw",
+                events: {
+                    "onStateChange": onPlayerStateChange
+                }
+            });
+        }
+
+        function onPlayerStateChange(event) {
+            if (event.data == YT.PlayerState.PLAYING) {
+                requestAnimationFrame(syncClockLoop);
+            }
+        }
+
+        function syncClockLoop() {
+            if (!player || typeof player.getCurrentTime !== "function") return;
+            const currentTime = player.getCurrentTime();
+            let activeElementFound = null;
+            
+            for (let i = 0; i < wordElements.length; i++) {
+                const start = parseFloat(wordElements[i].dataset.start);
+                const end = parseFloat(wordElements[i].dataset.end);
+                if (currentTime >= start && currentTime <= end) {
+                    wordElements[i].className = "word-token active";
+                    activeElementFound = wordElements[i];
+                } else {
+                    wordElements[i].className = "word-token";
+                }
+            }
+
+            // UX Scrolling Patch
+            if (activeElementFound && Date.now() - _lastScrollTime > 300) {
+                const container = document.getElementById("transcript-container");
+                const offset = activeElementFound.offsetTop;
+                container.scrollTop = offset - (container.clientHeight / 2) + 20; 
+                _lastScrollTime = Date.now();
+            }
+
+            if (player.getPlayerState() == YT.PlayerState.PLAYING) {
+                setTimeout(() => requestAnimationFrame(syncClockLoop), 100);
+            }
+        }
+
+        window.addEventListener("DOMContentLoaded", () => {
+            const cb = "?v=" + new Date().getTime();
+            
+            Promise.all([
+                fetch("assets/transcript_manifest.json" + cb).then(r => r.ok ? r.json() : []),
+                fetch("assets/concept_manifest.json" + cb).then(r => r.ok ? r.json() : []),
+                fetch("assets/words_token_manifest.json" + cb).then(r => r.ok ? r.json() : []).catch(() => [])
+            ]).then(([trans, conc, words]) => {
+                const transTarget = document.getElementById("transcript-target");
+                transTarget.innerHTML = "";
+
+                if (words && words.length > 0) {
+                    words.forEach(w => {
+                        const span = document.createElement("span");
+                        span.className = "word-token";
+                        span.innerText = w.word + " ";
+                        span.dataset.start = w.start;
+                        span.dataset.end = w.end;
+                        span.addEventListener("click", () => player.seekTo(w.start, true));
+                        transTarget.appendChild(span);
+                        wordElements.push(span);
+                    });
+                } else {
+                    transTarget.innerText = "Error: Word token array is structurally empty.";
+                }
+
+                const catTarget = document.getElementById("categories-target");
+                const hardcodedConcepts = [
+                    {title: "Flow Batteries Concept", timestamp: "00:00:00", description: "Introduction to low-cost chemical energy storage mechanisms."},
+                    {title: "Electrolysis Side-Reactions", timestamp: "00:02:56", description: "Demonstrating unexpected pH shifting and acid separation."},
+                    {title: "Ion Exchange Membranes", timestamp: "00:07:40", description: "Exploring charge-selective barriers."},
+                    {title: "Closed-Loop Metal Refining", timestamp: "00:12:02", description: "Stripping oxygen fields to deposit pure metallic iron."},
+                    {title: "Pressurized Hydrogen Extraction", timestamp: "00:38:33", description: "Isolating gas arrays efficiently without compressors."}
+                ];
+
+                const operationalConcepts = (conc && conc.length > 0) ? conc : hardcodedConcepts;
+                
+                operationalConcepts.forEach(node => {
+                    const card = document.createElement("div");
+                    card.className = "concept-card";
+                    card.innerHTML = `<strong>${node.title}</strong><span style="float:right;color:var(--accent-color)">${node.timestamp}</span><p style="font-size:0.85rem;color:var(--text-muted);margin-top:0.5rem">${node.description}</p>`;
+                    const targetSecs = parseTimestampToSeconds(node.timestamp);
+                    card.addEventListener("click", () => {
+                        if (player && typeof player.seekTo === "function") player.seekTo(targetSecs, true);
+                    });
+                    catTarget.appendChild(card);
+                });
+            }).catch(err => {
+                console.error("Render pipeline error:", err);
+                document.getElementById("transcript-target").innerText = "Data validation tracking mismatch.";
+            });
+        });
+    </script>
+</body>
+</html>

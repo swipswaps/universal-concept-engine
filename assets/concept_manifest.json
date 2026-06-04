@@ -1,0 +1,16 @@
+{
+  "categories": [
+    {
+      "name": "Core Technical Principles",
+      "description": "Fundamental engineering concepts extracted across timeline parameters.",
+      "nodes": [
+        {
+          "id": "concept_01",
+          "label": "Introductory Segment Term: 'Boot_Validation_Sequence_Active'",
+          "timestamp": 0.0,
+          "summary": "Auto-profiled milestone tracking the beginning of this targeted video interval clip."
+        }
+      ]
+    }
+  ]
+}
